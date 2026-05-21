@@ -10,18 +10,18 @@ from dotenv import load_dotenv
 
 # ─── Token loading ────────────────────────────────────────────────────────────
 load_dotenv()
-HF_TOKEN: str = os.environ.get("HF_TOKEN", "")
 
-# Fallback: read from Streamlit secrets (Streamlit Cloud deployment)
-if not HF_TOKEN:
+
+def _load_token() -> str:
+    token = os.environ.get("HF_TOKEN", "")
+    if token:
+        return token
     try:
         import streamlit as st
-        HF_TOKEN = st.secrets.get("HF_TOKEN", "")
+        token = st.secrets.get("HF_TOKEN", "") or st.secrets.get("hf_token", "")
     except Exception:
         pass
-
-if not HF_TOKEN:
-    raise ValueError("HF_TOKEN not found. Add it to your .env file or Streamlit secrets.")
+    return token
 
 # Zephyr is non-gated and available on HF's free serverless inference tier.
 # Uses text_generation (standard HF endpoint) instead of chat_completion
@@ -72,7 +72,15 @@ def generate(
     """
     from huggingface_hub import InferenceClient
 
-    client = InferenceClient(token=HF_TOKEN, timeout=60)
+    token = _load_token()
+    if not token:
+        return (
+            "HuggingFace token not found. "
+            "Please add HF_TOKEN to your Streamlit app secrets: "
+            "Manage App → Settings → Secrets → add `HF_TOKEN = \"hf_...\"`"
+        )
+
+    client = InferenceClient(token=token, timeout=60)
     formatted = _format_zephyr_prompt(prompt)
 
     for attempt in range(3):
