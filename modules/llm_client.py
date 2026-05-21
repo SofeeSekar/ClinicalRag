@@ -23,13 +23,23 @@ if not HF_TOKEN:
 if not HF_TOKEN:
     raise ValueError("HF_TOKEN not found. Add it to your .env file or Streamlit secrets.")
 
-# Zephyr is reliably available on HF's free serverless inference tier.
-# Mistral-7B-Instruct-v0.3 is gated and often causes 400 errors on cloud.
+# Zephyr is non-gated and available on HF's free serverless inference tier.
+# Uses text_generation (standard HF endpoint) instead of chat_completion
+# (/v1/chat/completions) which is unreliable on the free tier.
 _MODEL = "HuggingFaceH4/zephyr-7b-beta"
 _BACKOFF = [2, 4, 8]  # seconds between retry attempts
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
+
+def _format_zephyr_prompt(user_message: str) -> str:
+    """Wrap the message in Zephyr's chat template so the model follows instructions."""
+    return (
+        "<|system|>\nYou are a precise clinical document analyst.</s>\n"
+        f"<|user|>\n{user_message}</s>\n"
+        "<|assistant|>\n"
+    )
+
 
 def _is_retriable(exc: Exception) -> bool:
     """Return True for 503 / 429 / rate-limit class errors that warrant retry."""
@@ -55,52 +65,31 @@ def generate(
     max_tokens: int = 500,
     temperature: float = 0.1,
 ) -> str:
-    """Generate a completion for *prompt* using the Qwen 2.5-7B Instruct model.
+    """Generate a completion for *prompt* using the Zephyr-7B model.
 
-    Retries up to 3 times with exponential back-off (2 → 4 → 8 seconds) on
-    503 or rate-limit errors.  Non-retriable errors are re-raised immediately.
-    Returns a user-facing fallback string if all attempts fail.
-
-    Args:
-        prompt:      The full prompt string to send to the model.
-        max_tokens:  Maximum tokens in the generated response.
-        temperature: Sampling temperature — kept low (0.1) for factual accuracy.
-
-    Returns:
-        Generated text as a stripped string, or a fallback message on failure.
+    Uses text_generation (standard HF endpoint) which works on the free tier.
+    Retries up to 3 times with exponential back-off on 503 / rate-limit errors.
     """
     from huggingface_hub import InferenceClient
 
-    client = InferenceClient(
-        model=_MODEL,
-        token=HF_TOKEN,
-        timeout=30,
-    )
-    messages = [{"role": "user", "content": prompt}]
+    client = InferenceClient(token=HF_TOKEN, timeout=60)
+    formatted = _format_zephyr_prompt(prompt)
 
     for attempt in range(3):
         try:
-            response = client.chat_completion(
-                messages=messages,
-                max_tokens=max_tokens,
+            response = client.text_generation(
+                formatted,
+                model=_MODEL,
+                max_new_tokens=max_tokens,
                 temperature=temperature,
+                return_full_text=False,
             )
-            return response.choices[0].message.content.strip()
+            return response.strip()
 
         except Exception as exc:
-            msg = str(exc).lower()
-            # 400 BadRequestError usually means token limit or model access issue;
-            # surface a clear message rather than a cryptic traceback.
-            if "badrequest" in type(exc).__name__.lower() or "400" in msg:
-                return (
-                    "The AI model returned a bad request error. "
-                    "This may be a token limit or model access issue on the free inference tier."
-                )
             if _is_retriable(exc) and attempt < 2:
                 time.sleep(_BACKOFF[attempt])
                 continue
-            if not _is_retriable(exc):
-                raise
-            # Retriable error on the final attempt — fall through to return below
+            raise
 
     return "Service temporarily unavailable. Please try again."
