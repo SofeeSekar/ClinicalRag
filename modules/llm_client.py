@@ -23,7 +23,7 @@ if not HF_TOKEN:
 if not HF_TOKEN:
     raise ValueError("HF_TOKEN not found. Add it to your .env file or Streamlit secrets.")
 
-_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
 _BACKOFF = [2, 4, 8]  # seconds between retry attempts
 
 
