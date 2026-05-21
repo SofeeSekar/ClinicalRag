@@ -23,7 +23,9 @@ if not HF_TOKEN:
 if not HF_TOKEN:
     raise ValueError("HF_TOKEN not found. Add it to your .env file or Streamlit secrets.")
 
-_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
+# Zephyr is reliably available on HF's free serverless inference tier.
+# Mistral-7B-Instruct-v0.3 is gated and often causes 400 errors on cloud.
+_MODEL = "HuggingFaceH4/zephyr-7b-beta"
 _BACKOFF = [2, 4, 8]  # seconds between retry attempts
 
 
@@ -50,7 +52,7 @@ def _is_retriable(exc: Exception) -> bool:
 
 def generate(
     prompt: str,
-    max_tokens: int = 512,
+    max_tokens: int = 500,
     temperature: float = 0.1,
 ) -> str:
     """Generate a completion for *prompt* using the Qwen 2.5-7B Instruct model.
@@ -86,6 +88,14 @@ def generate(
             return response.choices[0].message.content.strip()
 
         except Exception as exc:
+            msg = str(exc).lower()
+            # 400 BadRequestError usually means token limit or model access issue;
+            # surface a clear message rather than a cryptic traceback.
+            if "badrequest" in type(exc).__name__.lower() or "400" in msg:
+                return (
+                    "The AI model returned a bad request error. "
+                    "This may be a token limit or model access issue on the free inference tier."
+                )
             if _is_retriable(exc) and attempt < 2:
                 time.sleep(_BACKOFF[attempt])
                 continue

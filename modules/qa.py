@@ -137,7 +137,7 @@ def compliance_scan(doc_name: str, vector_store: VectorStore) -> list:
         f"Document excerpts:\n{context}"
     )
 
-    raw = generate(prompt, max_tokens=1024)
+    raw = generate(prompt, max_tokens=500)
 
     try:
         findings = _extract_json_tag(raw, "findings")
@@ -188,7 +188,7 @@ def generate_summary(doc_name: str, vector_store: VectorStore) -> dict:
         f"Document excerpts:\n{context}"
     )
 
-    raw = generate(prompt, max_tokens=1024)
+    raw = generate(prompt, max_tokens=500)
 
     try:
         summary = _extract_json_tag(raw, "summary")
