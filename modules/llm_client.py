@@ -11,8 +11,17 @@ from dotenv import load_dotenv
 # ─── Token loading ────────────────────────────────────────────────────────────
 load_dotenv()
 HF_TOKEN: str = os.environ.get("HF_TOKEN", "")
+
+# Fallback: read from Streamlit secrets (Streamlit Cloud deployment)
 if not HF_TOKEN:
-    raise ValueError("HF_TOKEN not found. Add it to your .env file.")
+    try:
+        import streamlit as st
+        HF_TOKEN = st.secrets.get("HF_TOKEN", "")
+    except Exception:
+        pass
+
+if not HF_TOKEN:
+    raise ValueError("HF_TOKEN not found. Add it to your .env file or Streamlit secrets.")
 
 _MODEL = "Qwen/Qwen2.5-7B-Instruct"
 _BACKOFF = [2, 4, 8]  # seconds between retry attempts
